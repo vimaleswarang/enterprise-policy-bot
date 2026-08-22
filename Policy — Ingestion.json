@@ -1,0 +1,277 @@
+{
+  "name": "Policy — Ingestion",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b6264806-4bac-4dd4-81d3-ecac3d157679",
+      "name": "When clicking ‘Execute workflow’",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      source: 'HR Policy',\n      url: 'https://raw.githubusercontent.com/vimaleswarang/enterprise-policy-bot/main/hr_policy.txt',\n    },\n  },\n  {\n    json: {\n      source: 'Compliance Manual',\n      url: 'https://raw.githubusercontent.com/vimaleswarang/enterprise-policy-bot/main/compliance_manual.txt',\n    },\n  },\n  {\n    json: {\n      source: 'Technical Documentation',\n      url: 'https://raw.githubusercontent.com/vimaleswarang/enterprise-policy-bot/main/tech_docs.txt',\n    },\n  },\n  {\n    json: {\n      source: 'Onboarding Guide',\n      url: 'https://raw.githubusercontent.com/vimaleswarang/enterprise-policy-bot/main/onboarding_guide.txt',\n    },\n  },\n];"
+      },
+      "id": "5bbd7332-bd04-44f3-8d33-ac17d517dd2c",
+      "name": "List Policy Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "d538348e-619e-4f99-8bd3-69254b22c2af",
+      "name": "Fetch GitHub Documents",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const fetchedDocuments = $input.all();\nconst documentInfo = $('List Policy Documents').all();\n\nconst chunkSize = 800;\nconst overlap = 150;\nconst step = chunkSize - overlap;\nconst chunks = [];\n\nfetchedDocuments.forEach((item, documentNumber) => {\n  const text = item.json.data;\n\n  if (typeof text !== 'string' || !text.trim()) {\n    throw new Error(`No text found for document ${documentNumber + 1}`);\n  }\n\n  const { source, url } = documentInfo[documentNumber].json;\n  const cleanText = text.replace(/\\r\\n/g, '\\n').replace(/\\r/g, '\\n').trim();\n\n  let chunkIndex = 0;\n\n  for (let start = 0; start < cleanText.length; start += step) {\n    const chunkText = cleanText.slice(start, start + chunkSize);\n\n    chunks.push({\n      json: {\n        id: `${source.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${chunkIndex}`,\n        source,\n        url,\n        chunkIndex,\n        text: chunkText,\n      },\n    });\n\n    chunkIndex++;\n\n    if (start + chunkSize >= cleanText.length) {\n      break;\n    }\n  }\n});\n\nreturn chunks;"
+      },
+      "id": "8a62d735-4235-4622-bade-a66ab682a746",
+      "name": "Chunk Policy Documents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunks = $input.all().map((item) => item.json);\n\nreturn [\n  {\n    json: {\n      chunks,\n      inputs: chunks.map((chunk) => chunk.text),\n    },\n  },\n];"
+      },
+      "id": "12b1fb2f-fab0-4c70-b791-3d2b7508f2d6",
+      "name": "Prepare Embedding Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.tokenfactory.nebius.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "Qwen/Qwen3-Embedding-8B"
+            },
+            {
+              "name": "input",
+              "value": "={{ $json.inputs }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a0d3d43a-9866-4bec-90b4-886e061676af",
+      "name": "Generate Qwen Embeddings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        -144,
+        208
+      ],
+      "credentials": {
+        "httpTemplatedCustomAuth": {
+          "id": "u5H29u7T6V0vkrqG",
+          "name": "Nebius Token Factory Auth (Vimaleswaran G)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const chunks = $('Prepare Embedding Batch').first().json.chunks;\nconst embeddings = $input.first().json.data;\n\nif (chunks.length !== embeddings.length) {\n  throw new Error(\n    `Chunk count (${chunks.length}) does not match embedding count (${embeddings.length})`\n  );\n}\n\nreturn embeddings.map((embeddingItem, index) => ({\n  json: {\n    id: chunks[index].id,\n    values: embeddingItem.embedding,\n    metadata: {\n      text: chunks[index].text,\n      source: chunks[index].source,\n      url: chunks[index].url,\n      chunkIndex: chunks[index].chunkIndex,\n    },\n  },\n}));"
+      },
+      "id": "673dea66-c7d4-4756-a365-fa2a83a24907",
+      "name": "Build Pinecone Records",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        80,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const vectors = $input.all().map((item) => item.json);\n\nreturn [\n  {\n    json: {\n      vectors,\n      namespace: 'acme-policies',\n    },\n  },\n];"
+      },
+      "id": "06209d0e-7bd0-4f7a-8c5b-39457070ddd6",
+      "name": "Prepare Pinecone Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://enterprise-policies-vectors-e7azfim.svc.aped-4627-b74a.pinecone.io/vectors/upsert",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpTemplatedCustomAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=vectors",
+              "value": "={{ $json.vectors }}"
+            },
+            {
+              "name": "namespace",
+              "value": "={{ $json.namespace }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "587d04b5-a35a-49ec-8ae8-372687f213a4",
+      "name": "Upsert Vectors to Pinecone",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        528,
+        208
+      ],
+      "credentials": {
+        "httpTemplatedCustomAuth": {
+          "id": "oKBXNg3ZljJdlQf9",
+          "name": "Pinecone API Auth (Vimaleswaran G)"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "List Policy Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Policy Documents": {
+      "main": [
+        [
+          {
+            "node": "Fetch GitHub Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Documents": {
+      "main": [
+        [
+          {
+            "node": "Chunk Policy Documents",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk Policy Documents": {
+      "main": [
+        [
+          {
+            "node": "Prepare Embedding Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Embedding Batch": {
+      "main": [
+        [
+          {
+            "node": "Generate Qwen Embeddings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Qwen Embeddings": {
+      "main": [
+        [
+          {
+            "node": "Build Pinecone Records",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Pinecone Records": {
+      "main": [
+        [
+          {
+            "node": "Prepare Pinecone Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Pinecone Upsert": {
+      "main": [
+        [
+          {
+            "node": "Upsert Vectors to Pinecone",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "664d1125-e7e9-4510-aacd-15e454f3ce75",
+  "meta": {
+    "instanceId": "3bf9ae731629e0497058d2f13ed28894ce4474c197d3868e0fe891e6343835c3"
+  },
+  "nodeGroups": [],
+  "id": "Iq07BpyOFC2CaDVU",
+  "tags": []
+}

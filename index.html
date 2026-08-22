@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ACME Policy Assistant</title>
+  <title>Policy Assistant</title>
   <style>
     :root { --ink:#17213a; --muted:#667085; --blue:#2563eb; --blue2:#1d4ed8; --surface:#fff; --bg:#f4f7fb; }
     * { box-sizing:border-box; }
@@ -39,12 +39,12 @@
   <div class="app">
     <header>
       <div class="logo">A</div>
-      <div><h1>ACME Policy Assistant</h1><p>Grounded answers from ACME’s internal policy knowledge base</p></div>
+      <div><h1>Policy Assistant</h1><p>Grounded answers from Enterprise internal policy knowledge base</p></div>
     </header>
     <main>
       <div class="notice">Answers are generated from HR, compliance, technical, and onboarding documents. Check the listed sources.</div>
       <section id="messages" aria-live="polite">
-        <div class="welcome"><h2>How can I help?</h2><p>Ask a question about an ACME policy or procedure. I’ll retrieve relevant document sections before answering.</p></div>
+        <div class="welcome"><h2>How can I help?</h2><p>Ask a question about an Enterprise policy or procedure. I’ll retrieve relevant document sections before answering.</p></div>
       </section>
       <div class="chips">
         <button class="chip" type="button">What is the paid time off policy?</button>
@@ -52,11 +52,11 @@
         <button class="chip" type="button">What should a new employee do on their first day?</button>
       </div>
       <form id="chat-form">
-        <input id="question" autocomplete="off" placeholder="Ask an ACME policy question…" aria-label="Policy question" required />
+        <input id="question" autocomplete="off" placeholder="Ask an Enterprise policy question…" aria-label="Policy question" required />
         <button id="send" type="submit">Send</button>
       </form>
     </main>
-    <footer>ACME Corp · AI answers are limited to the connected policy documents.</footer>
+    <footer> AI answers are limited to the connected policy documents.</footer>
   </div>
   <script>
     const WEBHOOK_URL = 'https://vimaleswarang.app.n8n.cloud/webhook/policy-qa';
